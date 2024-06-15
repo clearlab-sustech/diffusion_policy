@@ -1,0 +1,49 @@
+name: drawer
+
+image_shape: &image_shape [3, 240, 320]
+shape_meta: &shape_meta
+  # acceptable types: rgb, low_dim
+  obs:
+    mid:
+      shape: *image_shape
+      type: rgb
+    right:
+      shape: *image_shape
+      type: rgb
+    qpos:
+      shape: [7]
+      type: low_dim
+    # eef_qpos:
+    #   shape: [7]
+    #   type: low_dim
+  action:
+    shape: [7]
+
+# env_runner:
+#   _target_: diffusion_policy.env_runner.aloha_image_runner.AlohaImageRunner
+  # n_train: 0
+  # n_train_vis: 0
+  # train_start_seed: 0
+  # n_test: 50
+  # n_test_vis: 4
+  # task_name: sim_transfer_cube_scripted
+  # test_start_seed: 100000
+  # max_steps: 400
+  # n_obs_steps: ${n_obs_steps}
+  # n_action_steps: ${n_action_steps}
+  # fps: 10
+  # past_action: ${past_action_visible}
+  # n_envs: null
+
+dataset:
+  _target_: diffusion_policy.dataset.aloha_image_dataset.AlohaImageDataset
+  dataset_dir: /media/clear/CLEAR/dataset/train_data/real_drawer_240_320_10Hz
+  shape_meta: *shape_meta
+  num_episodes: 50
+  horizon: ${horizon}
+  pad_before: ${eval:'${n_obs_steps}-1'}
+  pad_after: ${eval:'${n_action_steps}-1'}
+  use_cache: True
+  seed: 42
+  val_ratio: 0.2
+  max_train_episodes: null

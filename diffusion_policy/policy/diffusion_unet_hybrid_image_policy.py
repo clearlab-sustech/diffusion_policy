@@ -1,10 +1,10 @@
 from typing import Dict
-import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange, reduce
-from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
+from diffusers.schedulers.scheduling_ddim import DDIMScheduler
 
 from diffusion_policy.model.common.normalizer import LinearNormalizer
 from diffusion_policy.policy.base_image_policy import BaseImagePolicy
@@ -19,10 +19,11 @@ import diffusion_policy.model.vision.crop_randomizer as dmvc
 from diffusion_policy.common.pytorch_util import dict_apply, replace_submodules
 
 
+
 class DiffusionUnetHybridImagePolicy(BaseImagePolicy):
     def __init__(self, 
             shape_meta: dict,
-            noise_scheduler: DDPMScheduler,
+            noise_scheduler: DDIMScheduler,
             horizon, 
             n_action_steps, 
             n_obs_steps,
@@ -36,7 +37,6 @@ class DiffusionUnetHybridImagePolicy(BaseImagePolicy):
             cond_predict_scale=True,
             obs_encoder_group_norm=False,
             eval_fixed_crop=False,
-            # parameters passed to step
             **kwargs):
         super().__init__()
 

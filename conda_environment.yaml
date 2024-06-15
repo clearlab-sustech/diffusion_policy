@@ -22,7 +22,7 @@ dependencies:
   - numcodecs=0.10.2
   - h5py=3.7.0
   - hydra-core=1.2.0
-  - einops=0.4.1
+  - einops=0.7.0
   - tqdm=4.64.1
   - dill=0.3.5.1
   - scikit-video=1.1.11
@@ -63,3 +63,4 @@ dependencies:
     - imagecodecs==2022.9.26
     - r3m @ https://github.com/facebookresearch/r3m/archive/b2334e726887fa0206962d7984c69c5fb09cceab.tar.gz
     - dm-control==1.0.9
+    - ipdb==0.13.13

@@ -87,12 +87,11 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
             cfg.training.lr_scheduler,
             optimizer=self.optimizer,
             num_warmup_steps=cfg.training.lr_warmup_steps,
-            num_training_steps=(
-                len(train_dataloader) * cfg.training.num_epochs) \
-                    // cfg.training.gradient_accumulate_every,
+            num_training_steps=(len(train_dataloader) * cfg.training.num_epochs)
+            // cfg.training.gradient_accumulate_every,
             # pytorch assumes stepping LRScheduler every epoch
             # however huggingface diffusers steps it every batch
-            last_epoch=self.global_step-1
+            last_epoch=self.global_step - 1,
         )
 
         # configure ema
@@ -133,7 +132,7 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
         if self.ema_model is not None:
             self.ema_model.to(device)
         optimizer_to(self.optimizer, device)
-        
+
         # save batch for sampling
         train_sampling_batch = None
 
@@ -144,7 +143,7 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
             cfg.training.rollout_every = 1
             cfg.training.checkpoint_every = 1
             cfg.training.val_every = 1
-            cfg.training.sample_every = 1
+            # cfg.training.sample_every = 1
 
         # training loop
         log_path = os.path.join(self.output_dir, 'logs.json.txt')
@@ -153,8 +152,12 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                 step_log = dict()
                 # ========= train for this epoch ==========
                 train_losses = list()
-                with tqdm.tqdm(train_dataloader, desc=f"Training epoch {self.epoch}", 
-                        leave=False, mininterval=cfg.training.tqdm_interval_sec) as tepoch:
+                with tqdm.tqdm(
+                    train_dataloader,
+                    desc=f"Training epoch {self.epoch}",
+                    leave=False,
+                    mininterval=cfg.training.tqdm_interval_sec,
+                ) as tepoch:
                     for batch_idx, batch in enumerate(tepoch):
                         # device transfer
                         batch = dict_apply(batch, lambda x: x.to(device, non_blocking=True))
@@ -171,7 +174,7 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                             self.optimizer.step()
                             self.optimizer.zero_grad()
                             lr_scheduler.step()
-                        
+
                         # update ema
                         if cfg.training.use_ema:
                             ema.step(self.model)
@@ -194,8 +197,9 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                             json_logger.log(step_log)
                             self.global_step += 1
 
-                        if (cfg.training.max_train_steps is not None) \
-                            and batch_idx >= (cfg.training.max_train_steps-1):
+                        if (cfg.training.max_train_steps is not None) and batch_idx >= (
+                            cfg.training.max_train_steps - 1
+                        ):
                             break
 
                 # at the end of each epoch
@@ -219,39 +223,35 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                 if (self.epoch % cfg.training.val_every) == 0:
                     with torch.no_grad():
                         val_losses = list()
-                        with tqdm.tqdm(val_dataloader, desc=f"Validation epoch {self.epoch}", 
-                                leave=False, mininterval=cfg.training.tqdm_interval_sec) as tepoch:
+                        val_mse_errors = list()
+                        with tqdm.tqdm(
+                            val_dataloader,
+                            desc=f"Validation epoch {self.epoch}",
+                            leave=False,
+                            mininterval=cfg.training.tqdm_interval_sec,
+                        ) as tepoch:
                             for batch_idx, batch in enumerate(tepoch):
                                 batch = dict_apply(batch, lambda x: x.to(device, non_blocking=True))
                                 loss = self.model.compute_loss(batch)
                                 val_losses.append(loss)
-                                if (cfg.training.max_val_steps is not None) \
-                                    and batch_idx >= (cfg.training.max_val_steps-1):
+
+                                obs_dict = batch["obs"]
+                                gt_action = batch["action"]
+                                result = policy.predict_action(obs_dict)
+                                pred_action = result["action_pred"]
+                                mse_error = torch.nn.functional.mse_loss(pred_action, gt_action)
+                                val_mse_errors.append(mse_error)
+                                
+                                if (
+                                    cfg.training.max_val_steps is not None
+                                ) and batch_idx >= (cfg.training.max_val_steps - 1):
                                     break
                         if len(val_losses) > 0:
                             val_loss = torch.mean(torch.tensor(val_losses)).item()
+                            val_mse_error = torch.mean(torch.tensor(val_mse_errors)).item()
                             # log epoch average validation loss
                             step_log['val_loss'] = val_loss
-
-                # run diffusion sampling on a training batch
-                if (self.epoch % cfg.training.sample_every) == 0:
-                    with torch.no_grad():
-                        # sample trajectory from training set, and evaluate difference
-                        batch = dict_apply(train_sampling_batch, lambda x: x.to(device, non_blocking=True))
-                        obs_dict = batch['obs']
-                        gt_action = batch['action']
-                        
-                        result = policy.predict_action(obs_dict)
-                        pred_action = result['action_pred']
-                        mse = torch.nn.functional.mse_loss(pred_action, gt_action)
-                        step_log['train_action_mse_error'] = mse.item()
-                        del batch
-                        del obs_dict
-                        del gt_action
-                        del result
-                        del pred_action
-                        del mse
-                
+                            step_log["val_action_mse_error"] = val_mse_error
                 # checkpoint
                 if (self.epoch % cfg.training.checkpoint_every) == 0:
                     # checkpointing
@@ -265,7 +265,7 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                     for key, value in step_log.items():
                         new_key = key.replace('/', '_')
                         metric_dict[new_key] = value
-                    
+
                     # We can't copy the last checkpoint here
                     # since save_checkpoint uses threads.
                     # therefore at this point the file might have been empty!

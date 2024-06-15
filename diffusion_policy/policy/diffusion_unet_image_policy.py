@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange, reduce
-from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
+from diffusers.schedulers.scheduling_ddim import DDIMScheduler
 
 from diffusion_policy.model.common.normalizer import LinearNormalizer
 from diffusion_policy.policy.base_image_policy import BaseImagePolicy
@@ -12,10 +12,12 @@ from diffusion_policy.model.diffusion.mask_generator import LowdimMaskGenerator
 from diffusion_policy.model.vision.multi_image_obs_encoder import MultiImageObsEncoder
 from diffusion_policy.common.pytorch_util import dict_apply
 
+import sys
+
 class DiffusionUnetImagePolicy(BaseImagePolicy):
     def __init__(self, 
             shape_meta: dict,
-            noise_scheduler: DDPMScheduler,
+            noise_scheduler: DDIMScheduler,
             obs_encoder: MultiImageObsEncoder,
             horizon, 
             n_action_steps, 
@@ -37,6 +39,8 @@ class DiffusionUnetImagePolicy(BaseImagePolicy):
         action_dim = action_shape[0]
         # get feature dim
         obs_feature_dim = obs_encoder.output_shape()[0]
+        # print("Observation Encoder Output Shape:", obs_encoder.output_shape())
+        # sys.exit()
 
         # create diffusion model
         input_dim = action_dim + obs_feature_dim
@@ -78,6 +82,9 @@ class DiffusionUnetImagePolicy(BaseImagePolicy):
         if num_inference_steps is None:
             num_inference_steps = noise_scheduler.config.num_train_timesteps
         self.num_inference_steps = num_inference_steps
+
+        print("Diffusion params: %e" % sum(p.numel() for p in self.model.parameters()))
+        print("Vision params: %e" % sum(p.numel() for p in self.obs_encoder.parameters()))
     
     # ========= inference  ============
     def conditional_sample(self, 
@@ -90,11 +97,13 @@ class DiffusionUnetImagePolicy(BaseImagePolicy):
         model = self.model
         scheduler = self.noise_scheduler
 
-        trajectory = torch.randn(
-            size=condition_data.shape, 
-            dtype=condition_data.dtype,
-            device=condition_data.device,
-            generator=generator)
+        # trajectory = torch.randn(
+        #     size=condition_data.shape, 
+        #     dtype=condition_data.dtype,
+        #     device=condition_data.device,
+        #     generator=generator)
+        
+        trajectory = torch.zeros_like(condition_data)
     
         # set step values
         scheduler.set_timesteps(self.num_inference_steps)
@@ -155,7 +164,7 @@ class DiffusionUnetImagePolicy(BaseImagePolicy):
             # condition through impainting
             this_nobs = dict_apply(nobs, lambda x: x[:,:To,...].reshape(-1,*x.shape[2:]))
             nobs_features = self.obs_encoder(this_nobs)
-            # reshape back to B, T, Do
+            # reshape back to B, To, Do
             nobs_features = nobs_features.reshape(B, To, -1)
             cond_data = torch.zeros(size=(B, T, Da+Do), device=device, dtype=dtype)
             cond_mask = torch.zeros_like(cond_data, dtype=torch.bool)

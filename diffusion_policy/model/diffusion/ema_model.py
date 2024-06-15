@@ -45,6 +45,8 @@ class EMAModel:
         """
         Compute the decay factor for the exponential moving average.
         """
+
+        # return self.max_value
         step = max(0, optimization_step - self.update_after_step - 1)
         value = 1 - (1 + step / self.inv_gamma) ** -self.power
 
